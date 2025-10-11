@@ -6,10 +6,183 @@
     <title>ParkHere - Payment</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <link href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Midtrans CSS -->
+    <link rel="stylesheet" href="https://app.midtrans.com/snap/snap.css">
 </head>
-<body>
-    <h1>Payment</h1>
+<body class="payment-body">
+    <main class="container payment-container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-10 col-lg-8">
+                <!-- Header -->
+                <header class="payment-header d-flex align-items-center justify-content-between mb-4">
+                    <button class="btn btn-back" onclick="history.back()">
+                        <i class="ph ph-arrow-left"></i>
+                    </button>
+                    <h1 class="payment-title m-0">Payment</h1>
+                    <div style="width: 40px;"></div> <!-- Spacer for center alignment -->
+                </header>
+
+                <!-- Transaction Summary -->
+                <section class="transaction-summary mb-4">
+                    <div class="summary-card">
+                        <h3 class="summary-title">Transaction Summary</h3>
+                        <div class="summary-row">
+                            <span class="summary-label">Location</span>
+                            <span class="summary-value">Parkir APU</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="summary-label">Vehicle</span>
+                            <span class="summary-value">Car - B 1234 IMK</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="summary-label">Duration</span>
+                            <span class="summary-value">2 hours 30 minutes</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="summary-label">Rate</span>
+                            <span class="summary-value">Rp 5,000/hour</span>
+                        </div>
+                        <hr class="summary-divider">
+                        <div class="summary-row total-row">
+                            <span class="summary-label total-label">Total Amount</span>
+                            <span class="summary-value total-value">Rp 12,500</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Payment Methods -->
+                <section class="payment-methods mb-4">
+                    <h3 class="section-title">Choose Payment Method</h3>
+                    <div class="payment-methods-list">
+                        <!-- Credit/Debit Card -->
+                        <div class="payment-method-item" data-method="credit_card">
+                            <div class="method-info">
+                                <div class="method-icon">
+                                    <i class="ph ph-credit-card"></i>
+                                </div>
+                                <div class="method-details">
+                                    <h4 class="method-name">Credit/Debit Card</h4>
+                                    <p class="method-description">Visa, Mastercard, JCB</p>
+                                </div>
+                            </div>
+                            <div class="method-radio">
+                                <input type="radio" name="payment-method" id="credit_card" value="credit_card">
+                                <label for="credit_card"></label>
+                            </div>
+                        </div>
+
+                        <!-- Bank Transfer -->
+                        <div class="payment-method-item" data-method="bank_transfer">
+                            <div class="method-info">
+                                <div class="method-icon">
+                                    <i class="ph ph-bank"></i>
+                                </div>
+                                <div class="method-details">
+                                    <h4 class="method-name">Bank Transfer</h4>
+                                    <p class="method-description">BCA, BNI, BRI, Mandiri</p>
+                                </div>
+                            </div>
+                            <div class="method-radio">
+                                <input type="radio" name="payment-method" id="bank_transfer" value="bank_transfer">
+                                <label for="bank_transfer"></label>
+                            </div>
+                        </div>
+
+                        <!-- E-Wallet -->
+                        <div class="payment-method-item" data-method="ewallet">
+                            <div class="method-info">
+                                <div class="method-icon">
+                                    <i class="ph ph-smartphone"></i>
+                                </div>
+                                <div class="method-details">
+                                    <h4 class="method-name">E-Wallet</h4>
+                                    <p class="method-description">GoPay, OVO, DANA, LinkAja</p>
+                                </div>
+                            </div>
+                            <div class="method-radio">
+                                <input type="radio" name="payment-method" id="ewallet" value="ewallet">
+                                <label for="ewallet"></label>
+                            </div>
+                        </div>
+
+                        <!-- QRIS -->
+                        <div class="payment-method-item" data-method="qris">
+                            <div class="method-info">
+                                <div class="method-icon">
+                                    <i class="ph ph-qr-code"></i>
+                                </div>
+                                <div class="method-details">
+                                    <h4 class="method-name">QRIS</h4>
+                                    <p class="method-description">Scan QR code to pay</p>
+                                </div>
+                            </div>
+                            <div class="method-radio">
+                                <input type="radio" name="payment-method" id="qris" value="qris">
+                                <label for="qris"></label>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Payment Button -->
+                <section class="payment-action">
+                    <button class="btn btn-pay" id="payButton" disabled>
+                        <span class="pay-text">Pay Now</span>
+                        <span class="pay-amount">Rp 12,500</span>
+                    </button>
+                </section>
+            </div>
+        </div>
+    </main>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/main.js"></script>
+    <script type="module" src="js/main.js"></script>
+    <!-- Midtrans Snap JS -->
+    <script src="https://app.midtrans.com/snap/snap.js" data-client-key="YOUR_MIDTRANS_CLIENT_KEY"></script>
+    <script>
+        // Payment method selection
+        document.addEventListener('DOMContentLoaded', function() {
+            const paymentMethods = document.querySelectorAll('.payment-method-item');
+            const payButton = document.getElementById('payButton');
+
+            paymentMethods.forEach(method => {
+                method.addEventListener('click', function() {
+                    // Remove active class from all methods
+                    paymentMethods.forEach(m => m.classList.remove('active'));
+                    
+                    // Add active class to clicked method
+                    this.classList.add('active');
+                    
+                    // Check the radio button
+                    const radio = this.querySelector('input[type="radio"]');
+                    radio.checked = true;
+                    
+                    // Enable pay button
+                    payButton.disabled = false;
+                });
+            });
+
+            // Pay button click handler
+            payButton.addEventListener('click', function() {
+                const selectedMethod = document.querySelector('input[name="payment-method"]:checked');
+                if (!selectedMethod) return;
+
+                // Show loading state
+                this.innerHTML = '<i class="ph ph-spinner ph-spin me-2"></i>Processing...';
+                this.disabled = true;
+
+                // Simulate Midtrans integration
+                // In real implementation, this would call your backend to create transaction
+                setTimeout(() => {
+                    // Redirect to payment success page
+                    window.location.href = 'payment-success.html';
+                }, 2000);
+            });
+        });
+    </script>
 </body>
 </html>
