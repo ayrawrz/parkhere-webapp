@@ -618,6 +618,17 @@ async function initializeDetailPage() {
             return;
         }
         
+        // DEBUG: Add comprehensive logging for location data
+        console.log("Location data fetched:", locationData);
+        if (locationData.location) {
+            console.log("Geopoint exists:", locationData.location);
+            console.log("Latitude:", locationData.location.latitude);
+            console.log("Longitude:", locationData.location.longitude);
+        } else {
+            console.error("CRITICAL: Geopoint field ('location') is missing from the Firestore document!");
+            console.log("Available fields in locationData:", Object.keys(locationData));
+        }
+        
         // Get user's active vehicle to determine vehicle type
         const vehicles = await getUserVehicles(currentUser.uid);
         const activeVehicle = vehicles.find(v => v.isActive) || vehicles[0];
@@ -703,6 +714,7 @@ function loadStaticMap(locationData) {
         // Check if location has coordinates
         if (!locationData.location || !locationData.location.latitude || !locationData.location.longitude) {
             console.log('No coordinates available for this location');
+            console.log('Location data structure:', locationData);
             return;
         }
         
@@ -710,23 +722,26 @@ function loadStaticMap(locationData) {
         const longitude = locationData.location.longitude;
         
         console.log('Location coordinates:', latitude, longitude);
+        console.log('API Key being used:', GOOGLE_MAPS_API_KEY);
         
-        // Construct the static map URL
+        // Construct the static map URL with proper formatting
         const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?` +
             `center=${latitude},${longitude}&` +
             `zoom=17&` +
             `size=600x300&` +
             `maptype=roadmap&` +
-            `markers=color:red%7C${latitude},${longitude}&` +
+            `markers=color:red|label:P|${latitude},${longitude}&` +
             `key=${GOOGLE_MAPS_API_KEY}`;
         
-        console.log('Static map URL:', staticMapUrl);
+        console.log('Generated Static Map URL:', staticMapUrl);
         
         // Find the image placeholder element
         const imagePlaceholder = document.getElementById('detail-image-placeholder');
         if (imagePlaceholder) {
-            // Set the background image
-            imagePlaceholder.style.backgroundImage = `url(${staticMapUrl})`;
+            console.log('Found image placeholder element:', imagePlaceholder);
+            
+            // Set the background image with proper URL formatting
+            imagePlaceholder.style.backgroundImage = `url('${staticMapUrl}')`;
             imagePlaceholder.style.backgroundSize = 'cover';
             imagePlaceholder.style.backgroundPosition = 'center';
             imagePlaceholder.style.backgroundRepeat = 'no-repeat';
@@ -735,11 +750,17 @@ function loadStaticMap(locationData) {
             const placeholderIcon = imagePlaceholder.querySelector('i');
             if (placeholderIcon) {
                 placeholderIcon.style.display = 'none';
+                console.log('Hidden placeholder icon');
             }
             
-            console.log('Static map loaded successfully');
+            console.log('Successfully applied background image.');
+            console.log('Applied styles:', {
+                backgroundImage: imagePlaceholder.style.backgroundImage,
+                backgroundSize: imagePlaceholder.style.backgroundSize,
+                backgroundPosition: imagePlaceholder.style.backgroundPosition
+            });
         } else {
-            console.log('Image placeholder element not found');
+            console.error("Element with ID 'detail-image-placeholder' not found!");
         }
         
     } catch (error) {

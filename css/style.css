@@ -1303,8 +1303,11 @@ body {
 
 .detail-image-placeholder {
     width: 100%;
-    height: 200px;
-    background-color: #2C2C2C;
+    height: 200px; /* MUST have a height */
+    background-color: #2C2C2C; /* Fallback color */
+    background-size: cover; /* Ensures the map image fills the container */
+    background-position: center; /* Centers the map image */
+    background-repeat: no-repeat; /* Prevents image repetition */
     border-radius: 12px;
     display: flex;
     align-items: center;
