@@ -2,8 +2,8 @@
 console.log('ParkHere main.js loaded');
 
 // Import Firestore functions
-import { addVehicle, getUserVehicles, setActiveVehicle, getParkingLocations, getParkingLocationById, startParkingSession, getActiveParkingTicket, getVehicleById } from './firestore.js';
-import { showToast, showPopup, parseFirebaseError } from './ui.js';
+import { addVehicle, getUserVehicles, setActiveVehicle, getParkingLocations, getParkingLocationById, startParkingSession, getActiveParkingTicket, getVehicleById, endParkingSession, getActiveVehicle, getParkingHistoryById, getUserParkingHistory, saveNotification, getUserNotifications, markNotificationAsRead } from './firestore.js';
+import { showToast, showPopup, parseFirebaseError, showParkingStartNotification, showParkingEndNotification, showPaymentSuccessNotification, showPaymentFailedNotification } from './ui.js';
 import { getCurrentUser } from './auth.js';
 
 // Global variables
@@ -21,6 +21,32 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Initialize Firebase Auth for all pages (landing page doesn't load this script)
     initializeAuth();
+    
+    // Test notification system (temporary for debugging)
+    if (window.location.pathname.includes('home.html')) {
+        console.log('Adding test notification button...');
+        setTimeout(() => {
+            const testButton = document.createElement('button');
+            testButton.innerHTML = 'Test Notification';
+            testButton.style.cssText = `
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                z-index: 9999;
+                background: #F2C84F;
+                color: #000;
+                border: none;
+                padding: 10px;
+                border-radius: 5px;
+                cursor: pointer;
+            `;
+            testButton.onclick = () => {
+                console.log('Testing notification...');
+                showParkingStartNotification('Test Location', 'Car - B1234TEST');
+            };
+            document.body.appendChild(testButton);
+        }, 2000);
+    }
     
     // Password visibility toggle for login form
     const toggleLoginPassword = document.getElementById('toggle-login-password');
@@ -92,6 +118,12 @@ async function initializePage(page) {
                 break;
             case 'tiket':
                 await initializeTicketPage();
+                break;
+            case 'pembayaran':
+                await initializePaymentPage();
+                break;
+            case 'riwayat':
+                await initializeHistoryPage();
                 break;
             default:
                 console.log('No specific initialization for page:', page);
@@ -492,102 +524,260 @@ async function initializeNotificationsPage() {
     try {
         if (!currentUser) {
             console.log('No user authenticated for notifications page');
+            showToast('error', 'Please log in to view notifications');
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 2000);
             return;
         }
 
-        // Demo data (campus-only). Later, fetch from Firestore if needed.
-        const notifications = [
-            { id: 1, app: 'Parkhere', message: 'Hey Amy, your parking at Parkir Lapangan Wahidin is confirmed.', time: 'Today, 5 PM', read: false, href: 'detail-parkir.html' },
-            { id: 2, app: 'Parkhere', message: 'Ticket generated for Parkir APU. Show it at the entrance.', time: 'Today, 3 PM', read: true, href: 'tiket.html' },
-            { id: 3, app: 'Parkhere', message: 'Payment received for Parkir FEB.', time: 'Yesterday, 9 PM', read: true, href: 'pembayaran.html' },
-            { id: 4, app: 'Parkhere', message: 'Spot near you: Parkir Kantin has new availability.', time: 'Yesterday, 2 PM', read: false, href: 'home.html' }
-        ];
-
-        const listEl = document.getElementById('notification-list');
-        const allTab = document.getElementById('tab-all');
-        const unreadTab = document.getElementById('tab-unread');
-
-        if (!listEl || !allTab || !unreadTab) {
-            console.log('Notification elements not found');
-            return;
-        }
-
-        function render(list) {
-            listEl.innerHTML = '';
-            list.forEach(n => {
-                const card = document.createElement('div');
-                card.className = 'notification-card';
-
-                const icon = document.createElement('div');
-                icon.className = 'notif-icon';
-                icon.textContent = (n.app && n.app[0]) ? n.app[0] : 'P';
-
-                const content = document.createElement('div');
-                content.className = 'notif-content';
-
-                const top = document.createElement('div');
-                top.className = 'notif-top';
-
-                const title = document.createElement('h4');
-                title.className = 'notif-title';
-                title.textContent = n.app || 'Notification';
-                if (!n.read) {
-                    const dot = document.createElement('span');
-                    dot.className = 'unread-dot';
-                    title.appendChild(dot);
-                }
-
-                const time = document.createElement('div');
-                time.className = 'notif-time';
-                time.textContent = n.time;
-
-                top.appendChild(title);
-                top.appendChild(time);
-
-                const message = document.createElement('p');
-                message.className = 'notif-message';
-                message.textContent = n.message;
-
-                const actions = document.createElement('div');
-                actions.className = 'notif-actions';
-                const link = document.createElement('a');
-                link.href = n.href || '#';
-                link.textContent = 'See more';
-                actions.appendChild(link);
-
-                content.appendChild(top);
-                content.appendChild(message);
-                content.appendChild(actions);
-
-                card.appendChild(icon);
-                card.appendChild(content);
-
-                listEl.appendChild(card);
-            });
-        }
-
-        function setActive(tab) {
-            [allTab, unreadTab].forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-        }
-
-        allTab.addEventListener('click', () => {
-            setActive(allTab);
-            render(notifications);
-        });
-
-        unreadTab.addEventListener('click', () => {
-            setActive(unreadTab);
-            render(notifications.filter(n => !n.read));
-        });
-
-        // Initial render (All)
-        setActive(allTab);
-        render(notifications);
+        // Load user notifications from Firestore
+        await loadUserNotifications('all');
+        
+        // Setup tab switching
+        setupNotificationTabs();
+        
     } catch (error) {
         console.error('Error initializing notifications page:', error);
         showToast('error', 'Failed to load notifications');
     }
+}
+
+// Load user notifications
+async function loadUserNotifications(filter = 'all') {
+    try {
+        console.log('Loading notifications with filter:', filter);
+        
+        const notificationList = document.getElementById('notification-list');
+        if (!notificationList) {
+            console.error('Notification list element not found');
+            return;
+        }
+        
+        // Show loading state
+        notificationList.innerHTML = `
+            <div class="loading-state">
+                <div class="spinner-border text-warning" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading notifications...</p>
+            </div>
+        `;
+        
+        // Fetch notifications from Firestore
+        const notifications = await getUserNotifications(currentUser.uid, filter);
+        console.log('Fetched notifications:', notifications);
+        
+        if (notifications.length === 0) {
+            renderEmptyNotifications();
+            return;
+        }
+        
+        // Render notifications
+        renderNotifications(notifications);
+        
+    } catch (error) {
+        console.error('Error loading notifications:', error);
+        showToast('error', 'Failed to load notifications');
+        renderErrorState();
+    }
+}
+
+// Setup notification tabs
+function setupNotificationTabs() {
+    const tabAll = document.getElementById('tab-all');
+    const tabUnread = document.getElementById('tab-unread');
+    
+    if (tabAll) {
+        tabAll.addEventListener('click', async () => {
+            console.log('Switching to All notifications');
+            tabAll.classList.add('active');
+            tabUnread.classList.remove('active');
+            await loadUserNotifications('all');
+        });
+    }
+    
+    if (tabUnread) {
+        tabUnread.addEventListener('click', async () => {
+            console.log('Switching to Unread notifications');
+            tabUnread.classList.add('active');
+            tabAll.classList.remove('active');
+            await loadUserNotifications('unread');
+        });
+    }
+}
+
+// Render notifications list
+function renderNotifications(notifications) {
+    const notificationList = document.getElementById('notification-list');
+    if (!notificationList) return;
+    
+    notificationList.innerHTML = '';
+    
+    notifications.forEach(notification => {
+        const notificationElement = createNotificationElement(notification);
+        notificationList.appendChild(notificationElement);
+    });
+}
+
+// Create notification element
+function createNotificationElement(notification) {
+    const div = document.createElement('div');
+    div.className = `notification-item ${!notification.isRead ? 'unread' : ''}`;
+    div.style.cssText = `
+        background-color: #2C2C2C;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border-left: 4px solid ${getNotificationColor(notification.type)};
+        cursor: pointer;
+        transition: all 0.2s ease;
+    `;
+    
+    // Add hover effect
+    div.addEventListener('mouseenter', () => {
+        div.style.backgroundColor = '#3C3C3C';
+    });
+    
+    div.addEventListener('mouseleave', () => {
+        div.style.backgroundColor = '#2C2C2C';
+    });
+    
+    // Add click handler to mark as read
+    div.addEventListener('click', async () => {
+        if (!notification.isRead) {
+            try {
+                await markNotificationAsRead(notification.id);
+                notification.isRead = true;
+                div.classList.remove('unread');
+                div.style.borderLeft = `4px solid ${getNotificationColor(notification.type)}`;
+            } catch (error) {
+                console.error('Error marking notification as read:', error);
+            }
+        }
+    });
+    
+    const timeAgo = formatTimeAgo(notification.createdAt);
+    
+    div.innerHTML = `
+        <div style="display: flex; align-items: flex-start; gap: 12px;">
+            <div style="
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background-color: #F2C84F;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            ">
+                <i class="ph ph-${getNotificationIcon(notification.type)}" style="
+                    font-size: 18px;
+                    color: #000;
+                "></i>
+            </div>
+            <div style="flex: 1;">
+                <div style="
+                    color: #FFFFFF;
+                    font-weight: 600;
+                    font-size: 14px;
+                    margin-bottom: 4px;
+                ">${notification.title}</div>
+                <div style="
+                    color: #A0A0A0;
+                    font-size: 13px;
+                    line-height: 1.4;
+                    margin-bottom: 8px;
+                ">${notification.message}</div>
+                <div style="
+                    color: #8E8E93;
+                    font-size: 12px;
+                ">${timeAgo}</div>
+            </div>
+            ${!notification.isRead ? `
+                <div style="
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background-color: #F2C84F;
+                    flex-shrink: 0;
+                    margin-top: 4px;
+                "></div>
+            ` : ''}
+        </div>
+    `;
+    
+    return div;
+}
+
+// Get notification color based on type
+function getNotificationColor(type) {
+    const colors = {
+        'parking_start': '#10B981',
+        'parking_end': '#3B82F6',
+        'payment_success': '#10B981',
+        'payment_failed': '#EF4444'
+    };
+    return colors[type] || '#3C3C3C';
+}
+
+// Get notification icon based on type
+function getNotificationIcon(type) {
+    const icons = {
+        'parking_start': 'car',
+        'parking_end': 'clock',
+        'payment_success': 'check-circle',
+        'payment_failed': 'x-circle'
+    };
+    return icons[type] || 'bell';
+}
+
+// Format time ago
+function formatTimeAgo(timestamp) {
+    if (!timestamp) return 'Just now';
+    
+    const now = new Date();
+    const time = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const diffInSeconds = Math.floor((now - time) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    
+    return time.toLocaleDateString();
+}
+
+// Render empty state
+function renderEmptyNotifications() {
+    const notificationList = document.getElementById('notification-list');
+    if (!notificationList) return;
+    
+    notificationList.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="ph ph-bell-slash"></i>
+            </div>
+            <h3>No notifications</h3>
+            <p>You don't have any notifications yet.</p>
+        </div>
+    `;
+}
+
+// Render error state
+function renderErrorState() {
+    const notificationList = document.getElementById('notification-list');
+    if (!notificationList) return;
+    
+    notificationList.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="ph ph-warning-circle"></i>
+            </div>
+            <h3>Failed to load</h3>
+            <p>Unable to load notifications. Please try again.</p>
+        </div>
+    `;
 }
 
 // Detail page initialization
@@ -655,8 +845,66 @@ async function initializeDetailPage() {
         // Load static map image
         loadStaticMap(locationData);
         
-        // Add event listener for start parking button
-        addStartParkingListener(locationId, activeVehicle.id);
+        // Add event listener for start parking button with new logic
+        const startParkingButton = document.getElementById('start-parking-button');
+        if (startParkingButton) {
+            startParkingButton.addEventListener('click', async () => {
+                try {
+                    showToast('info', 'Starting session...');
+                    startParkingButton.disabled = true;
+
+                    const user = await getCurrentUser();
+                    const activeVehicle = await getActiveVehicle(user.uid);
+
+                    if (!user) {
+                        throw new Error("User not found.");
+                    }
+
+                    if (!activeVehicle) {
+                        showToast('error', 'Please select an active vehicle first.');
+                        startParkingButton.disabled = false;
+                        return; // Stop execution
+                    }
+
+                    // Panggil fungsi yang sudah diperbaiki
+                    const newTicketId = await startParkingSession(user.uid, activeVehicle, locationId);
+                    
+                    // Show parking start notification
+                    console.log('=== CALLING PARKING START NOTIFICATION ===');
+                    console.log('Location Data:', locationData);
+                    console.log('Active Vehicle:', activeVehicle);
+                    
+                    const vehicleInfo = `${activeVehicle.type} - ${activeVehicle.plate}`;
+                    console.log('Vehicle Info String:', vehicleInfo);
+                    
+                    // Show popup notification
+                    showParkingStartNotification(locationData.name, vehicleInfo);
+                    
+                    // Save notification to Firestore
+                    try {
+                        await saveNotification(user.uid, {
+                            type: 'parking_start',
+                            title: 'Parking Started',
+                            message: `Your parking session at ${locationData.name} has started. Vehicle: ${vehicleInfo}`,
+                            locationName: locationData.name,
+                            vehicleInfo: vehicleInfo
+                        });
+                        console.log('Parking start notification saved to Firestore');
+                    } catch (error) {
+                        console.error('Error saving parking start notification:', error);
+                    }
+                    
+                    // JIKA BERHASIL, BARU REDIRECT
+                    showToast('success', 'Session started!');
+                    window.location.href = `tiket.html?id=${newTicketId}`;
+
+                } catch (error) {
+                    console.error("Gagal memulai sesi dari UI:", error);
+                    showToast('error', error.message);
+                    startParkingButton.disabled = false;
+                }
+            });
+        }
         
     } catch (error) {
         console.error('Error initializing detail page:', error);
@@ -695,9 +943,23 @@ function renderParkingLocationDetail(locationData, activeVehicle) {
     const totalSlots = document.getElementById('total-slots');
     
     if (availableSlots && totalSlots) {
-        const vehicleType = activeVehicle.vehicleType.toLowerCase();
+        // Handle different possible field names for vehicle type
+        const vehicleTypeField = activeVehicle.vehicleType || activeVehicle.type || activeVehicle.vehicle_type;
+        if (!vehicleTypeField) {
+            console.error("Vehicle type field not found in activeVehicle:", activeVehicle);
+            availableSlots.textContent = "0";
+            totalSlots.textContent = "0";
+            return;
+        }
+        
+        const vehicleType = vehicleTypeField.toLowerCase();
+        console.log("Rendering slots for vehicle type:", vehicleType);
+        console.log("Location slots data:", locationData.slots);
+        
         const slotsData = locationData.slots && locationData.slots[vehicleType] ? 
             locationData.slots[vehicleType] : { available: 0, total: 0 };
+        
+        console.log("Slots data for", vehicleType, ":", slotsData);
         
         availableSlots.textContent = slotsData.available || 0;
         totalSlots.textContent = slotsData.total || 0;
@@ -776,39 +1038,6 @@ function loadStaticMap(locationData) {
     }
 }
 
-// Add start parking button event listener
-function addStartParkingListener(locationId, vehicleId) {
-    const startParkingButton = document.getElementById('start-parking-button');
-    
-    if (startParkingButton) {
-        startParkingButton.addEventListener('click', async function() {
-            console.log('Start parking button clicked');
-            
-            try {
-                // Show loading popup
-                showPopup('info', 'Starting session...', 'Please wait while we start your parking session.', null);
-                
-                // Start the parking session
-                const ticketId = await startParkingSession(currentUser.uid, vehicleId, locationId);
-                
-                console.log('Parking session started successfully:', ticketId);
-                
-                // Show success toast
-                showToast('success', 'Session Started!');
-                
-                // Redirect to ticket page
-                setTimeout(() => {
-                    window.location.href = `tiket.html?id=${ticketId}`;
-                }, 1500);
-                
-            } catch (error) {
-                console.error('Error starting parking session:', error);
-                const friendlyError = parseFirebaseError(error);
-                showToast('error', friendlyError);
-            }
-        });
-    }
-}
 
 // Ticket page initialization
 async function initializeTicketPage() {
@@ -846,8 +1075,73 @@ async function initializeTicketPage() {
         // Start the timer
         startParkingTimer(ticketData.startTime);
         
-        // Add end parking button listener
-        addEndParkingListener(ticketData.id);
+        // Add end parking button listener with new logic
+        const endParkingButton = document.getElementById('end-parking-button');
+        const startTime = ticketData.startTime.toDate();
+        const ticketId = ticketData.id;
+        
+        if (endParkingButton) {
+            endParkingButton.addEventListener('click', async () => {
+                // 1. HENTIKAN TIMER DULU!
+                if (window.parkingTimerInterval) {
+                    clearInterval(window.parkingTimerInterval);
+                }
+
+                // 2. HITUNG DURASI & BIAYA FINAL
+                const finalDurationInSeconds = Math.max(0, Math.floor((new Date() - startTime) / 1000));
+                const finalAmount = 3000; // Harga demo kita per hari
+
+                console.log(`Mengakhiri sesi. Durasi: ${finalDurationInSeconds} detik, Biaya: ${finalAmount}`);
+
+                // Tampilkan loading state
+                showToast('info', 'Ending session...');
+                endParkingButton.disabled = true;
+
+                // 3. PANGGIL FUNGSI FIRESTORE DENGAN DATA YANG BENAR
+                try {
+                    console.log("=== CALLING endParkingSession ===");
+                    console.log("Parameters:", { ticketId, finalDurationInSeconds, finalAmount });
+                    
+                    const result = await endParkingSession(ticketId, finalDurationInSeconds, finalAmount);
+                    
+                    console.log("=== endParkingSession SUCCESS ===");
+                    console.log("Result:", result);
+                    
+                    // Show parking end notification
+                    const durationFormatted = formatDuration(finalDurationInSeconds);
+                    showParkingEndNotification(locationData.name, durationFormatted, finalAmount);
+                    
+                    // Save notification to Firestore
+                    try {
+                        await saveNotification(currentUser.uid, {
+                            type: 'parking_end',
+                            title: 'Parking Ended',
+                            message: `Your parking session at ${locationData.name} has ended. Duration: ${durationFormatted}, Amount: Rp ${finalAmount.toLocaleString()}`,
+                            locationName: locationData.name,
+                            duration: durationFormatted,
+                            amount: finalAmount
+                        });
+                        console.log('Parking end notification saved to Firestore');
+                    } catch (error) {
+                        console.error('Error saving parking end notification:', error);
+                    }
+                    
+                    // 4. JIKA BERHASIL, REDIRECT TO PAYMENT PAGE
+                    console.log("Redirecting to payment page with history ID:", result);
+                    window.location.href = `pembayaran.html?historyId=${result}&duration=${finalDurationInSeconds}&amount=${finalAmount}`;
+
+                } catch (error) {
+                    // 5. JIKA GAGAL, BERI TAHU PENGGUNA
+                    console.error("=== endParkingSession FAILED ===");
+                    console.error("Error object:", error);
+                    console.error("Error message:", error.message);
+                    console.error("Error code:", error.code);
+                    console.error("Error stack:", error.stack);
+                    showToast('error', 'Failed to end session. Please try again.');
+                    endParkingButton.disabled = false; // Aktifkan lagi tombolnya
+                }
+            });
+        }
         
     } catch (error) {
         console.error('Error initializing ticket page:', error);
@@ -924,53 +1218,38 @@ function startParkingTimer(startTime) {
     // Convert Firestore timestamp to JavaScript Date
     const startDate = startTime.toDate();
     
-    // Update timer immediately
-    updateTimer(startDate, timerElement);
-    
-    // Update timer every second
-    parkingTimer = setInterval(() => {
-        updateTimer(startDate, timerElement);
-    }, 1000);
-}
-
-// Update timer display
-function updateTimer(startDate, timerElement) {
-    const now = Date.now();
-    const diffMs = now - startDate.getTime();
-    
-    // Convert milliseconds to hours, minutes, seconds
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-    
-    // Format as HH:MM:SS
-    const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
-    timerElement.textContent = timeString;
-}
-
-// Add end parking button listener
-function addEndParkingListener(ticketId) {
-    const endButton = document.getElementById('end-parking-button');
-    
-    if (endButton) {
-        endButton.addEventListener('click', function() {
-            console.log('End parking button clicked');
-            
-            // Stop the timer
-            if (parkingTimer) {
-                clearInterval(parkingTimer);
-                parkingTimer = null;
-            }
-            
-            // Show toast and redirect with ticket ID
-            showToast('success', 'Proceeding to payment...');
-            setTimeout(() => {
-                window.location.href = `pembayaran.html?id=${ticketId}`;
-            }, 1500);
-        });
+    // Clear any previous timer to prevent multiple timers running
+    if (window.parkingTimerInterval) {
+        clearInterval(window.parkingTimerInterval);
     }
+
+    function updateTimer() {
+        const now = new Date();
+        // Calculate total elapsed seconds from the start time
+        const elapsedTimeInSeconds = Math.max(0, Math.floor((now - startDate) / 1000));
+
+        const hours = Math.floor(elapsedTimeInSeconds / 3600);
+        const minutes = Math.floor((elapsedTimeInSeconds % 3600) / 60);
+        const seconds = elapsedTimeInSeconds % 60;
+
+        // Format to HH:MM:SS
+        const formattedTime = [
+            hours.toString().padStart(2, '0'),
+            minutes.toString().padStart(2, '0'),
+            seconds.toString().padStart(2, '0')
+        ].join(':');
+
+        if (timerElement) {
+            timerElement.textContent = formattedTime;
+        }
+    }
+
+    // Start the timer
+    updateTimer(); // Run once immediately
+    window.parkingTimerInterval = setInterval(updateTimer, 1000);
 }
+
+
 
 // Add vehicle page initialization
 async function initializeAddVehiclePage() {
@@ -1235,6 +1514,535 @@ function showAlert(message, type = 'info') {
 // Navigation functions
 function navigateTo(page) {
     window.location.href = `${page}.html`;
+}
+
+// Payment page initialization
+async function initializePaymentPage() {
+    console.log('Initializing payment page');
+    
+    try {
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const historyId = urlParams.get('historyId');
+        const duration = parseInt(urlParams.get('duration')) || 0;
+        const amount = parseInt(urlParams.get('amount')) || 3000;
+        
+        console.log('Payment page parameters:', { historyId, duration, amount });
+        
+        if (!historyId) {
+            showToast('error', 'Invalid payment session');
+            setTimeout(() => {
+                window.location.href = 'home.html';
+            }, 2000);
+            return;
+        }
+        
+        // Get parking history data
+        const historyData = await getParkingHistoryById(historyId);
+        if (!historyData) {
+            showToast('error', 'Parking session not found');
+            setTimeout(() => {
+                window.location.href = 'home.html';
+            }, 2000);
+            return;
+        }
+        
+        console.log('History data:', historyData);
+        
+        // Populate payment summary
+        populatePaymentSummary(historyData, duration, amount);
+        
+        // Setup payment method selection
+        setupPaymentMethodSelection();
+        
+        // Setup pay now button
+        setupPayNowButton(historyId, amount);
+        
+    } catch (error) {
+        console.error('Error initializing payment page:', error);
+        showToast('error', 'Failed to load payment details');
+        setTimeout(() => {
+            window.location.href = 'home.html';
+        }, 2000);
+    }
+}
+
+// Populate payment summary with parking data
+function populatePaymentSummary(historyData, duration, amount) {
+    // Location
+    const locationElement = document.getElementById('payment-location');
+    if (locationElement) {
+        locationElement.textContent = historyData.locationName || 'Unknown Location';
+    }
+    
+    // Vehicle
+    const vehicleElement = document.getElementById('payment-vehicle');
+    if (vehicleElement) {
+        const vehicleType = historyData.vehicleType || 'Unknown';
+        const licensePlate = historyData.licensePlate || 'Unknown';
+        vehicleElement.textContent = `${vehicleType} - ${licensePlate}`;
+    }
+    
+    // Duration
+    const durationElement = document.getElementById('payment-duration');
+    if (durationElement) {
+        durationElement.textContent = formatDuration(duration);
+    }
+    
+    // Start time
+    const startTimeElement = document.getElementById('payment-start-time');
+    if (startTimeElement) {
+        const startTime = historyData.startTime ? historyData.startTime.toDate() : new Date();
+        startTimeElement.textContent = startTime.toLocaleString();
+    }
+    
+    // Parking fee
+    const parkingFeeElement = document.getElementById('parking-fee');
+    if (parkingFeeElement) {
+        parkingFeeElement.textContent = `Rp ${amount.toLocaleString()}`;
+    }
+    
+    // Total amount
+    const totalAmountElement = document.getElementById('total-amount');
+    if (totalAmountElement) {
+        const totalAmount = amount + 500; // Add service fee
+        totalAmountElement.textContent = `Rp ${totalAmount.toLocaleString()}`;
+    }
+}
+
+// Setup payment method selection
+function setupPaymentMethodSelection() {
+    const paymentMethods = document.querySelectorAll('.payment-method');
+    
+    paymentMethods.forEach(method => {
+        method.addEventListener('click', () => {
+            // Remove selected class from all methods
+            paymentMethods.forEach(m => m.classList.remove('selected'));
+            
+            // Add selected class to clicked method
+            method.classList.add('selected');
+            
+            // Check the radio button
+            const radio = method.querySelector('input[type="radio"]');
+            if (radio) {
+                radio.checked = true;
+            }
+        });
+    });
+}
+
+// Setup pay now button
+function setupPayNowButton(historyId, amount) {
+    const payNowButton = document.getElementById('pay-now-button');
+    
+    if (payNowButton) {
+        payNowButton.addEventListener('click', async () => {
+            // Check if payment method is selected
+            const selectedMethod = document.querySelector('input[name="payment-method"]:checked');
+            if (!selectedMethod) {
+                showToast('error', 'Please select a payment method');
+                return;
+            }
+            
+            const paymentMethod = selectedMethod.value;
+            console.log('Selected payment method:', paymentMethod);
+            
+            // Disable button and show loading
+            payNowButton.disabled = true;
+            payNowButton.innerHTML = '<i class="ph ph-spinner ph-spin"></i><span>Processing...</span>';
+            
+            try {
+                // Simulate payment processing
+                await simulatePaymentProcessing(paymentMethod, amount);
+                
+                // Show payment success notification
+                showPaymentSuccessNotification(amount);
+                
+                // Save notification to Firestore
+                try {
+                    await saveNotification(currentUser.uid, {
+                        type: 'payment_success',
+                        title: 'Payment Successful',
+                        message: `Your payment of Rp ${amount.toLocaleString()} has been processed successfully.`,
+                        amount: amount
+                    });
+                    console.log('Payment success notification saved to Firestore');
+                } catch (error) {
+                    console.error('Error saving payment success notification:', error);
+                }
+                
+                // Show success and redirect
+                showPopup('success', 'Payment Successful', 'Your payment has been processed successfully!', () => {
+                    window.location.href = 'payment-success.html?historyId=' + historyId;
+                });
+                
+            } catch (error) {
+                console.error('Payment failed:', error);
+                showPaymentFailedNotification();
+                
+                // Save notification to Firestore
+                try {
+                    await saveNotification(currentUser.uid, {
+                        type: 'payment_failed',
+                        title: 'Payment Failed',
+                        message: 'Your payment could not be processed. Please try again.',
+                        amount: amount
+                    });
+                    console.log('Payment failed notification saved to Firestore');
+                } catch (saveError) {
+                    console.error('Error saving payment failed notification:', saveError);
+                }
+                
+                showToast('error', 'Payment failed. Please try again.');
+                
+                // Re-enable button
+                payNowButton.disabled = false;
+                payNowButton.innerHTML = '<i class="ph ph-credit-card"></i><span>Pay Now</span>';
+            }
+        });
+    }
+}
+
+// Simulate payment processing
+async function simulatePaymentProcessing(method, amount) {
+    console.log(`Processing ${method} payment for Rp ${amount}`);
+    
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Simulate random success/failure (90% success rate)
+    if (Math.random() < 0.9) {
+        console.log('Payment processed successfully');
+        return true;
+    } else {
+        throw new Error('Payment gateway error');
+    }
+}
+
+// Format duration helper function
+function formatDuration(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${remainingSeconds}s`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${remainingSeconds}s`;
+    } else {
+        return `${remainingSeconds}s`;
+    }
+}
+
+// History page initialization
+async function initializeHistoryPage() {
+    console.log('Initializing history page');
+    
+    try {
+        // Check if this is a refresh request
+        const urlParams = new URLSearchParams(window.location.search);
+        const isRefresh = urlParams.get('refresh') === 'true';
+        
+        if (isRefresh) {
+            console.log('Refresh requested, clearing URL parameters');
+            // Remove the refresh parameter from URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        
+        // Setup tab switching
+        setupTabSwitching();
+        
+        // Load user's parking history
+        await loadParkingHistory();
+        
+        // Add page visibility listener to refresh data when user returns
+        setupPageVisibilityListener();
+        
+    } catch (error) {
+        console.error('Error initializing history page:', error);
+        showToast('error', 'Failed to load transaction history');
+    }
+}
+
+// Setup page visibility listener to refresh data when user returns
+function setupPageVisibilityListener() {
+    document.addEventListener('visibilitychange', async () => {
+        if (!document.hidden) {
+            console.log('Page became visible, refreshing transaction data...');
+            await loadParkingHistory();
+        }
+    });
+    
+    // Also refresh when the page gains focus
+    window.addEventListener('focus', async () => {
+        console.log('Window gained focus, refreshing transaction data...');
+        await loadParkingHistory();
+    });
+}
+
+// Setup tab switching functionality
+function setupTabSwitching() {
+    const activeTab = document.getElementById('active-tab');
+    const historyTab = document.getElementById('history-tab');
+    const activeSection = document.getElementById('active-section');
+    const historySection = document.getElementById('history-section');
+    
+    if (activeTab && historyTab && activeSection && historySection) {
+        activeTab.addEventListener('click', () => switchTab('active'));
+        historyTab.addEventListener('click', () => switchTab('history'));
+    }
+}
+
+// Switch between tabs
+async function switchTab(tab) {
+    const activeTab = document.getElementById('active-tab');
+    const historyTab = document.getElementById('history-tab');
+    const activeSection = document.getElementById('active-section');
+    const historySection = document.getElementById('history-section');
+    
+    if (tab === 'active') {
+        activeTab.classList.add('active');
+        historyTab.classList.remove('active');
+        activeSection.style.display = 'block';
+        historySection.style.display = 'none';
+        
+        // Refresh active section data when switching to active tab
+        console.log('Switching to active tab, refreshing data...');
+        await refreshActiveSection();
+    } else {
+        historyTab.classList.add('active');
+        activeTab.classList.remove('active');
+        historySection.style.display = 'block';
+        activeSection.style.display = 'none';
+    }
+}
+
+// Refresh active section data
+async function refreshActiveSection() {
+    try {
+        const user = await getCurrentUser();
+        if (!user) {
+            console.log('No user found, cannot refresh active section');
+            return;
+        }
+        
+        const activeTicket = await getActiveParkingTicket(user.uid);
+        updateActiveSection(activeTicket);
+    } catch (error) {
+        console.error('Error refreshing active section:', error);
+    }
+}
+
+// Load parking history from Firestore
+async function loadParkingHistory() {
+    const loadingState = document.getElementById('loading-state');
+    const transactionsList = document.getElementById('transactions-list');
+    
+    try {
+        // Show loading state
+        if (loadingState) {
+            loadingState.style.display = 'block';
+        }
+        
+        // Get current user
+        const user = await getCurrentUser();
+        if (!user) {
+            throw new Error('User not authenticated');
+        }
+        
+        // Fetch both active and completed transactions
+        const [activeTickets, historyData] = await Promise.all([
+            getActiveParkingTicket(user.uid),
+            getUserParkingHistory(user.uid)
+        ]);
+        
+        // Hide loading state
+        if (loadingState) {
+            loadingState.style.display = 'none';
+        }
+        
+        // Render transactions
+        if (historyData && historyData.length > 0) {
+            renderTransactionCards(historyData);
+        } else {
+            renderEmptyState();
+        }
+        
+        // Update active section
+        updateActiveSection(activeTickets);
+        
+    } catch (error) {
+        console.error('Error loading parking history:', error);
+        
+        // Hide loading state
+        if (loadingState) {
+            loadingState.style.display = 'none';
+        }
+        
+        // Show error state
+        if (transactionsList) {
+            transactionsList.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <i class="ph ph-warning"></i>
+                    </div>
+                    <h3>Failed to Load</h3>
+                    <p>Unable to load your transaction history. Please try again.</p>
+                    <button class="btn btn-primary-yellow" onclick="location.reload()">
+                        <i class="ph ph-arrow-clockwise"></i>
+                        Retry
+                    </button>
+                </div>
+            `;
+        }
+    }
+}
+
+// Update active section with current parking ticket
+function updateActiveSection(activeTicket) {
+    const activeSection = document.getElementById('active-section');
+    
+    if (!activeSection) return;
+    
+    if (activeTicket) {
+        // Show active parking session
+        activeSection.innerHTML = `
+            <div class="transaction-card">
+                <div class="transaction-header">
+                    <div class="transaction-status">
+                        <i class="ph ph-clock"></i>
+                        <span>Parking Active</span>
+                    </div>
+                    <div class="transaction-date">Now</div>
+                </div>
+                
+                <div class="transaction-vehicle">
+                    ${activeTicket.vehicleType || 'Unknown'} - ${activeTicket.licensePlate || 'Unknown'}
+                </div>
+                
+                <div class="transaction-location">
+                    <i class="ph ph-map-pin"></i>
+                    <span>${activeTicket.locationName || 'Unknown Location'}</span>
+                </div>
+                
+                <div class="transaction-details">
+                    <div class="transaction-duration">
+                        <i class="ph ph-clock"></i>
+                        <span>Started: ${activeTicket.startTime ? activeTicket.startTime.toDate().toLocaleTimeString() : 'Unknown'}</span>
+                    </div>
+                    <div class="transaction-cost">Active</div>
+                </div>
+                
+                <div class="transaction-actions">
+                    <button class="btn btn-primary-yellow" onclick="window.location.href='tiket.html?id=${activeTicket.id}'">
+                        <i class="ph ph-eye"></i>
+                        View Ticket
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        // Show empty state for active
+        activeSection.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <i class="ph ph-clock"></i>
+                </div>
+                <h3>No Active Transactions</h3>
+                <p>You don't have any active parking sessions at the moment.</p>
+                <button class="btn btn-primary-yellow" onclick="window.location.href='home.html'">
+                    <i class="ph ph-plus"></i>
+                    Start Parking
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Render transaction cards
+function renderTransactionCards(transactions) {
+    const transactionsList = document.getElementById('transactions-list');
+    
+    if (!transactionsList) return;
+    
+    transactionsList.innerHTML = '';
+    
+    transactions.forEach(transaction => {
+        const card = createTransactionCard(transaction);
+        transactionsList.appendChild(card);
+    });
+}
+
+// Create a transaction card element
+function createTransactionCard(transaction) {
+    const card = document.createElement('div');
+    card.className = 'transaction-card';
+    
+    // Format date
+    const date = transaction.endTime ? transaction.endTime.toDate() : new Date();
+    const formattedDate = date.toLocaleDateString('en-US', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+    });
+    
+    // Format duration
+    const duration = transaction.duration || 0;
+    const durationText = formatDuration(duration);
+    
+    // Format cost
+    const cost = transaction.amount || 0;
+    const formattedCost = `Rp ${cost.toLocaleString()}`;
+    
+    card.innerHTML = `
+        <div class="transaction-header">
+            <div class="transaction-status">
+                <i class="ph ph-check-circle"></i>
+                <span>Parking Complete</span>
+            </div>
+            <div class="transaction-date">${formattedDate}</div>
+        </div>
+        
+        <div class="transaction-vehicle">
+            ${transaction.vehicleType || 'Unknown'} - ${transaction.licensePlate || 'Unknown'}
+        </div>
+        
+        <div class="transaction-location">
+            <i class="ph ph-map-pin"></i>
+            <span>${transaction.locationName || 'Unknown Location'}</span>
+        </div>
+        
+        <div class="transaction-details">
+            <div class="transaction-duration">
+                <i class="ph ph-clock"></i>
+                <span>${durationText}</span>
+            </div>
+            <div class="transaction-cost">${formattedCost}</div>
+        </div>
+    `;
+    
+    return card;
+}
+
+// Render empty state
+function renderEmptyState() {
+    const transactionsList = document.getElementById('transactions-list');
+    
+    if (!transactionsList) return;
+    
+    transactionsList.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="ph ph-clock-counter-clockwise"></i>
+            </div>
+            <h3>No Transaction History</h3>
+            <p>You haven't completed any parking sessions yet.</p>
+            <button class="btn btn-primary-yellow" onclick="window.location.href='home.html'">
+                <i class="ph ph-plus"></i>
+                Start Parking
+            </button>
+        </div>
+    `;
 }
 
 // Export functions for use in other modules

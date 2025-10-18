@@ -3,7 +3,7 @@ console.log('ParkHere firestore.js loaded');
 
 // Import Firebase modules
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js';
-import { getFirestore, collection, addDoc, query, where, getDocs, doc, updateDoc, writeBatch, getDoc, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
+import { getFirestore, collection, addDoc, query, where, getDocs, doc, updateDoc, writeBatch, getDoc, runTransaction, serverTimestamp, deleteDoc } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -83,111 +83,185 @@ export async function getParkingLocationById(locationId) {
     }
 }
 
-export async function startParkingSession(userId, vehicleId, locationId) {
+export async function startParkingSession(userId, activeVehicle, locationId) {
+    const db = getFirestore();
+    const locationRef = doc(db, "parkingLocations", locationId);
+    const newTicketRef = doc(collection(db, "activeParkings")); // Siapkan referensi tiket baru
+
+    console.log("--- Memulai Transaksi Start Parking ---");
+    console.log("UserID:", userId);
+    console.log("VehicleID:", activeVehicle.id);
+    console.log("LocationID:", locationId);
+
     try {
-        console.log('Starting parking session:', { userId, vehicleId, locationId });
-        
-        // Use a transaction to ensure data integrity
-        const result = await runTransaction(db, async (transaction) => {
-            // Get the parking location document
-            const locationRef = doc(db, 'parkingLocations', locationId);
-            const locationSnap = await transaction.get(locationRef);
+        await runTransaction(db, async (transaction) => {
+            // 1. Dapatkan data lokasi parkir
+            const locationDoc = await transaction.get(locationRef);
+            if (!locationDoc.exists()) {
+                throw new Error("Lokasi parkir tidak ditemukan!");
+            }
+            const locationData = locationDoc.data();
+            console.log("Data Lokasi:", locationData);
+            console.log("Location data keys:", Object.keys(locationData));
+
+            // 2. Tentukan tipe kendaraan dan cek slot
+            console.log("Active vehicle data:", activeVehicle);
+            console.log("Available fields:", Object.keys(activeVehicle));
             
-            if (!locationSnap.exists()) {
-                throw new Error('Parking location not found');
+            // Handle different possible field names for vehicle type
+            const vehicleTypeField = activeVehicle.vehicleType || activeVehicle.type || activeVehicle.vehicle_type;
+            if (!vehicleTypeField) {
+                throw new Error("Vehicle type field not found in vehicle data");
             }
             
-            const locationData = locationSnap.data();
+            const vehicleType = vehicleTypeField.toLowerCase();
+            console.log("Looking for slots for vehicle type:", vehicleType);
+            console.log("Location slots data:", locationData.slots);
             
-            // Get the vehicle document to determine vehicle type
-            const vehicleRef = doc(db, 'vehicles', vehicleId);
-            const vehicleSnap = await transaction.get(vehicleRef);
-            
-            if (!vehicleSnap.exists()) {
-                throw new Error('Vehicle not found');
+            // Check if slots data exists and has the vehicle type
+            if (!locationData.slots) {
+                throw new Error("No slots data found in location");
             }
             
-            const vehicleData = vehicleSnap.data();
-            const vehicleType = vehicleData.vehicleType.toLowerCase(); // 'car' or 'motorcycle'
-            
-            // Check if slots are available for this vehicle type
-            if (!locationData.slots || !locationData.slots[vehicleType]) {
-                throw new Error('No slots available for this vehicle type');
+            if (!locationData.slots[vehicleType]) {
+                console.log("Available slot types:", Object.keys(locationData.slots));
+                throw new Error(`No slots found for vehicle type: ${vehicleType}`);
             }
             
             const currentSlots = locationData.slots[vehicleType];
-            if (currentSlots.available <= 0) {
-                throw new Error('No available slots for this vehicle type');
+            console.log(`Slot untuk ${vehicleType}:`, currentSlots);
+            
+            // Check if currentSlots has the available property
+            if (!currentSlots || typeof currentSlots.available === 'undefined') {
+                throw new Error(`Invalid slot data for ${vehicleType}. Available property not found.`);
             }
-            
-            // Create the parking session document
-            const sessionData = {
-                userId: userId,
-                vehicleId: vehicleId,
-                locationId: locationId,
-                startTime: serverTimestamp(),
-                status: 'active',
-                vehicleType: vehicleData.vehicleType,
-                licensePlate: vehicleData.licensePlate,
-                locationName: locationData.name
-            };
-            
-            const sessionRef = doc(collection(db, 'activeParkings'));
-            transaction.set(sessionRef, sessionData);
-            
-            // Decrement the available slots for the vehicle type
-            const updatedSlots = {
-                ...locationData.slots,
-                [vehicleType]: {
-                    ...currentSlots,
-                    available: currentSlots.available - 1
-                }
-            };
-            
+
+            if (currentSlots.available <= 0) {
+                throw new Error("Parkir penuh untuk jenis kendaraan ini!");
+            }
+
+            // 3. Kurangi slot
             transaction.update(locationRef, {
-                slots: updatedSlots,
-                updatedAt: serverTimestamp()
+                [`slots.${vehicleType}.available`]: currentSlots.available - 1
             });
-            
-            return sessionRef.id;
+            console.log("Slot berhasil dikurangi.");
+
+            // 4. Buat tiket baru
+            const licensePlateField = activeVehicle.licensePlate || activeVehicle.plate || activeVehicle.license_plate;
+            const ticketData = {
+                userId: userId,
+                vehicleId: activeVehicle.id,
+                vehicleType: vehicleTypeField, // Use the resolved vehicle type
+                licensePlate: licensePlateField, // Use the resolved license plate
+                locationId: locationId,
+                locationName: locationData.name,
+                startTime: serverTimestamp(),
+                status: "active"
+            };
+            transaction.set(newTicketRef, ticketData);
+            console.log("Tiket baru berhasil dibuat di transaksi.");
         });
-        
-        console.log('Parking session started successfully:', result);
-        return result;
-        
+
+        console.log("--- Transaksi Start Parking BERHASIL ---");
+        return newTicketRef.id; // Kembalikan ID tiket baru
+
     } catch (error) {
-        console.error('Error starting parking session:', error);
+        console.error("--- Transaksi Start Parking GAGAL ---", error);
+        throw error; // Lemparkan error agar bisa ditangkap oleh UI
+    }
+}
+
+// Get active vehicle for user
+export async function getActiveVehicle(userId) {
+    try {
+        console.log('Fetching active vehicle for user:', userId);
         
-        // If it's a permissions error, provide helpful message
-        if (error.code === 'permission-denied') {
-            throw new Error('Permission denied. Please check your Firestore security rules and ensure you are authenticated.');
+        const db = getFirestore();
+        const vehiclesRef = collection(db, 'vehicles');
+        const q = query(vehiclesRef, where('userId', '==', userId), where('isActive', '==', true));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+            console.log('No active vehicle found for user');
+            return null;
         }
         
-        throw error;
+        const activeVehicleDoc = querySnapshot.docs[0];
+        const rawData = activeVehicleDoc.data();
+        console.log('Raw vehicle data from Firestore:', rawData);
+        
+        const activeVehicleData = {
+            id: activeVehicleDoc.id,
+            ...rawData // Use spread operator to flatten
+        };
+        console.log('Active vehicle found (flat object):', activeVehicleData);
+        console.log('Available fields in activeVehicleData:', Object.keys(activeVehicleData));
+        return activeVehicleData;
+        
+    } catch (error) {
+        console.error('Error fetching active vehicle:', error);
+        return null;
     }
 }
 
 export async function getActiveParkingTicket(userId) {
     try {
-        console.log('Fetching active parking ticket for user:', userId);
+        console.log('=== FETCHING ACTIVE PARKING TICKET ===');
+        console.log('User ID:', userId);
         
         const activeParkingsRef = collection(db, 'activeParkings');
         const q = query(activeParkingsRef, where('userId', '==', userId), where('status', '==', 'active'));
         const querySnapshot = await getDocs(q);
+        
+        console.log('Query results count:', querySnapshot.docs.length);
         
         if (querySnapshot.empty) {
             console.log('No active parking ticket found for user:', userId);
             return null;
         }
         
+        // Check if there are multiple active tickets (this shouldn't happen)
+        if (querySnapshot.docs.length > 1) {
+            console.warn('WARNING: Multiple active tickets found!', querySnapshot.docs.length);
+            querySnapshot.docs.forEach((doc, index) => {
+                console.log(`Ticket ${index + 1}:`, doc.id, doc.data());
+            });
+            
+            // Clean up duplicate tickets - keep the most recent one
+            console.log('Cleaning up duplicate active tickets...');
+            await cleanupDuplicateActiveTickets(userId, querySnapshot.docs);
+            
+            // Re-fetch after cleanup
+            const newQuerySnapshot = await getDocs(q);
+            if (newQuerySnapshot.empty) {
+                console.log('No active tickets after cleanup');
+                return null;
+            }
+            const ticketDoc = newQuerySnapshot.docs[0];
+            const rawData = ticketDoc.data();
+            const ticketData = {
+                id: ticketDoc.id,
+                ...rawData
+            };
+            console.log('Found active parking ticket after cleanup:', ticketData);
+            return ticketData;
+        }
+        
         // Get the first (and should be only) document
         const ticketDoc = querySnapshot.docs[0];
+        const rawData = ticketDoc.data();
+        console.log('Raw ticket data from Firestore:', rawData);
+        console.log('Start time from Firestore:', rawData.startTime);
+        console.log('Start time type:', typeof rawData.startTime);
+        
         const ticketData = {
             id: ticketDoc.id,
-            ...ticketDoc.data()
+            ...rawData
         };
         
-        console.log('Found active parking ticket:', ticketData);
+        console.log('Found active parking ticket (processed):', ticketData);
+        console.log('Available fields in ticket data:', Object.keys(ticketData));
+        console.log('=== END FETCHING ACTIVE PARKING TICKET ===');
         return ticketData;
         
     } catch (error) {
@@ -408,6 +482,316 @@ function deleteParkingRecord(recordId) {
             resolve({ success: true, id: recordId });
         }, 500);
     });
+}
+
+// End parking session function
+export async function endParkingSession(ticketId, durationInSeconds, amount) {
+    console.log("=== STARTING endParkingSession ===");
+    console.log("Ticket ID:", ticketId);
+    console.log("Duration:", durationInSeconds);
+    console.log("Amount:", amount);
+    
+    const db = getFirestore();
+    const activeTicketRef = doc(db, "activeParkings", ticketId);
+    const historyCollectionRef = collection(db, "parkingHistory");
+
+    try {
+        console.log("Starting Firestore transaction...");
+        const historyDocId = await runTransaction(db, async (transaction) => {
+            console.log("Inside transaction, getting active ticket...");
+            // 1. Ambil tiket aktif
+            const activeTicketDoc = await transaction.get(activeTicketRef);
+            console.log("Active ticket document exists:", activeTicketDoc.exists());
+            if (!activeTicketDoc.exists()) {
+                throw new Error("Sesi parkir aktif tidak ditemukan! Mungkin sudah berakhir.");
+            }
+            
+            // Check if ticket is still active
+            const ticketData = activeTicketDoc.data();
+            if (ticketData.status !== 'active') {
+                throw new Error("Sesi parkir sudah tidak aktif! Status: " + ticketData.status);
+            }
+            console.log("Ticket data retrieved:", ticketData);
+            console.log("Ticket data keys:", Object.keys(ticketData));
+
+            // 2. GET LOCATION DATA FIRST (all reads must be done before writes)
+            console.log("Getting location document for slot restoration...");
+            console.log("Location ID from ticket:", ticketData.locationId);
+            const locationRef = doc(db, "parkingLocations", ticketData.locationId);
+            const locationDoc = await transaction.get(locationRef);
+            console.log("Location document exists:", locationDoc.exists());
+            // Store location data for later use in writes
+            let locationData = null;
+            let vehicleType = null;
+            let currentAvailable = null;
+            
+            if (locationDoc.exists()) {
+                locationData = locationDoc.data();
+                console.log("Location data for slot restoration:", locationData);
+                console.log("Ticket data:", ticketData);
+                
+                // Handle different possible field names for vehicle type
+                const vehicleTypeField = ticketData.vehicleType || ticketData.type || ticketData.vehicle_type;
+                if (!vehicleTypeField) {
+                    throw new Error("Vehicle type field not found in ticket data");
+                }
+                
+                vehicleType = vehicleTypeField.toLowerCase();
+                console.log("Restoring slots for vehicle type:", vehicleType);
+                console.log("Location slots data:", locationData.slots);
+                
+                // Check if slots data exists and has the vehicle type
+                if (locationData.slots && locationData.slots[vehicleType]) {
+                    const currentSlots = locationData.slots[vehicleType];
+                    console.log("Current slots for", vehicleType, ":", currentSlots);
+                    
+                    // Check if currentSlots has the available property
+                    if (currentSlots && typeof currentSlots.available !== 'undefined') {
+                        currentAvailable = currentSlots.available;
+                        console.log("Will increment available slots from", currentAvailable, "to", currentAvailable + 1);
+                    } else {
+                        console.log("Invalid slot data for", vehicleType, "skipping slot restoration");
+                    }
+                } else {
+                    console.log("No slots data found for vehicle type:", vehicleType, "skipping slot restoration");
+                }
+            }
+
+            // NOW DO ALL WRITES (after all reads are complete)
+            console.log("=== STARTING WRITE OPERATIONS ===");
+            
+            // 3. Siapkan data untuk riwayat
+            console.log("Preparing history data...");
+            const historyData = {
+                ...ticketData,
+                status: "completed",
+                endTime: serverTimestamp(),
+                duration: durationInSeconds, // <-- Gunakan durasi yang dihitung
+                amount: amount              // <-- Gunakan biaya yang dihitung
+            };
+            console.log("History data prepared:", historyData);
+            const newHistoryRef = doc(collection(db, "parkingHistory"));
+            console.log("Creating history document...");
+            transaction.set(newHistoryRef, historyData);
+            console.log("History document created successfully");
+
+            // 4. Hapus tiket aktif
+            console.log("Deleting active ticket...");
+            transaction.delete(activeTicketRef);
+            console.log("Active ticket deleted successfully");
+
+            // 5. Kembalikan slot parkir (if we have valid data)
+            if (locationData && vehicleType && currentAvailable !== null) {
+                console.log("Updating location slots...");
+                transaction.update(locationRef, {
+                    [`slots.${vehicleType}.available`]: currentAvailable + 1
+                });
+                console.log("Location slots updated successfully");
+            } else {
+                console.log("Skipping slot restoration due to missing data");
+            }
+            
+            console.log("Transaction completed successfully, returning history ID:", newHistoryRef.id);
+            return newHistoryRef.id;
+        });
+        console.log("=== TRANSACTION SUCCESSFUL ===");
+        console.log("History document ID:", historyDocId);
+        return historyDocId;
+    } catch (error) {
+        console.error("=== TRANSACTION FAILED ===");
+        console.error("Error details:", error);
+        console.error("Error message:", error.message);
+        console.error("Error code:", error.code);
+        console.error("Stack trace:", error.stack);
+        throw error;
+    }
+}
+
+// Get parking history by ID
+export async function getParkingHistoryById(historyId) {
+    try {
+        console.log('Fetching parking history by ID:', historyId);
+        
+        const db = getFirestore();
+        const historyRef = doc(db, 'parkingHistory', historyId);
+        const historySnap = await getDoc(historyRef);
+        
+        if (!historySnap.exists()) {
+            console.log('Parking history not found for ID:', historyId);
+            return null;
+        }
+        
+        const historyData = {
+            id: historySnap.id,
+            ...historySnap.data()
+        };
+        
+        console.log('Found parking history:', historyData);
+        return historyData;
+        
+    } catch (error) {
+        console.error('Error fetching parking history:', error);
+        return null;
+    }
+}
+
+// Clean up duplicate active tickets
+async function cleanupDuplicateActiveTickets(userId, ticketDocs) {
+    try {
+        console.log('Starting cleanup of duplicate active tickets...');
+        
+        // Sort tickets by startTime (most recent first)
+        const sortedTickets = ticketDocs.sort((a, b) => {
+            const aTime = a.data().startTime ? a.data().startTime.toDate() : new Date(0);
+            const bTime = b.data().startTime ? b.data().startTime.toDate() : new Date(0);
+            return bTime - aTime;
+        });
+        
+        // Keep the most recent ticket, delete the rest
+        const ticketsToDelete = sortedTickets.slice(1); // All except the first (most recent)
+        
+        console.log(`Keeping ticket ${sortedTickets[0].id}, deleting ${ticketsToDelete.length} duplicates`);
+        
+        // Delete duplicate tickets
+        const deletePromises = ticketsToDelete.map(doc => {
+            console.log(`Deleting duplicate ticket: ${doc.id}`);
+            return deleteDoc(doc.ref);
+        });
+        
+        await Promise.all(deletePromises);
+        console.log('Duplicate tickets cleaned up successfully');
+        
+    } catch (error) {
+        console.error('Error cleaning up duplicate tickets:', error);
+    }
+}
+
+// Get user's parking history
+export async function getUserParkingHistory(userId) {
+    try {
+        console.log('Fetching parking history for user:', userId);
+        
+        const db = getFirestore();
+        const historyRef = collection(db, 'parkingHistory');
+        const q = query(historyRef, where('userId', '==', userId), where('status', '==', 'completed'));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+            console.log('No parking history found for user:', userId);
+            return [];
+        }
+        
+        const historyData = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        // Sort by endTime descending (most recent first)
+        historyData.sort((a, b) => {
+            const aTime = a.endTime ? a.endTime.toDate() : new Date(0);
+            const bTime = b.endTime ? b.endTime.toDate() : new Date(0);
+            return bTime - aTime;
+        });
+        
+        console.log('Found parking history for user:', historyData.length, 'transactions');
+        return historyData;
+        
+    } catch (error) {
+        console.error('Error fetching user parking history:', error);
+        return [];
+    }
+}
+
+// Notification history functions
+export async function saveNotification(userId, notificationData) {
+    try {
+        console.log('Saving notification for user:', userId);
+        console.log('Notification data:', notificationData);
+        
+        const db = getFirestore();
+        const notificationsRef = collection(db, 'notifications');
+        
+        const notificationDoc = {
+            userId: userId,
+            type: notificationData.type, // 'parking_start', 'parking_end', 'payment_success', 'payment_failed'
+            title: notificationData.title,
+            message: notificationData.message,
+            locationName: notificationData.locationName || null,
+            vehicleInfo: notificationData.vehicleInfo || null,
+            amount: notificationData.amount || null,
+            duration: notificationData.duration || null,
+            isRead: false,
+            createdAt: serverTimestamp()
+        };
+        
+        const docRef = await addDoc(notificationsRef, notificationDoc);
+        console.log('Notification saved with ID:', docRef.id);
+        return docRef.id;
+        
+    } catch (error) {
+        console.error('Error saving notification:', error);
+        throw error;
+    }
+}
+
+export async function getUserNotifications(userId, filter = 'all') {
+    try {
+        console.log('Fetching notifications for user:', userId, 'Filter:', filter);
+        
+        const db = getFirestore();
+        const notificationsRef = collection(db, 'notifications');
+        let q;
+        
+        if (filter === 'unread') {
+            q = query(notificationsRef, where('userId', '==', userId), where('isRead', '==', false));
+        } else {
+            q = query(notificationsRef, where('userId', '==', userId));
+        }
+        
+        const querySnapshot = await getDocs(q);
+        
+        const notifications = [];
+        querySnapshot.forEach((doc) => {
+            notifications.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        
+        // Sort by createdAt descending (most recent first)
+        notifications.sort((a, b) => {
+            const aTime = a.createdAt ? a.createdAt.toDate() : new Date(0);
+            const bTime = b.createdAt ? b.createdAt.toDate() : new Date(0);
+            return bTime - aTime;
+        });
+        
+        console.log('Notifications fetched:', notifications.length, 'records');
+        return notifications;
+        
+    } catch (error) {
+        console.error('Error fetching notifications:', error);
+        return [];
+    }
+}
+
+export async function markNotificationAsRead(notificationId) {
+    try {
+        console.log('Marking notification as read:', notificationId);
+        
+        const db = getFirestore();
+        const notificationRef = doc(db, 'notifications', notificationId);
+        
+        await updateDoc(notificationRef, {
+            isRead: true,
+            readAt: serverTimestamp()
+        });
+        
+        console.log('Notification marked as read');
+        
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+        throw error;
+    }
 }
 
 // Real-time listeners

@@ -3,14 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ParkHere - History</title>
+    <title>Transaction History - ParkHere</title>
+    
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Phosphor Icons -->
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-    <h1>Parking History</h1>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/main.js"></script>
-    <script src="js/firestore.js"></script>
+<body class="history-body">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-10 col-lg-8">
+                
+                <!-- Header -->
+                <div class="history-header">
+                    <button class="btn-back" onclick="history.back()">
+                        <i class="ph ph-arrow-left"></i>
+                    </button>
+                    <h2>Transaction</h2>
+                    <div class="header-icon">
+                        <i class="ph ph-wallet"></i>
+                    </div>
+                </div>
+
+                <!-- Transaction Tabs -->
+                <div class="transaction-tabs">
+                    <button class="tab-button" id="active-tab" onclick="switchTab('active')">
+                        Active
+                    </button>
+                    <button class="tab-button active" id="history-tab" onclick="switchTab('history')">
+                        History
+                    </button>
+                </div>
+
+                <!-- Active Transactions (Hidden by default) -->
+                <div class="transactions-section" id="active-section" style="display: none;">
+                    <div class="empty-state">
+                        <div class="empty-icon">
+                            <i class="ph ph-clock"></i>
+                        </div>
+                        <h3>No Active Transactions</h3>
+                        <p>You don't have any active parking sessions at the moment.</p>
+                        <button class="btn btn-primary-yellow" onclick="window.location.href='home.html'">
+                            <i class="ph ph-plus"></i>
+                            Start Parking
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History Transactions -->
+                <div class="transactions-section" id="history-section">
+                    <div class="transactions-list" id="transactions-list">
+                        <!-- Loading state -->
+                        <div class="loading-state" id="loading-state">
+                            <div class="spinner-border text-warning" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p>Loading transaction history...</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <a href="home.html" class="nav-item">
+            <i class="ph ph-house"></i>
+            <span>Home</span>
+        </a>
+        <a href="riwayat.html" class="nav-item active">
+            <i class="ph ph-wallet"></i>
+            <span>Transaction</span>
+        </a>
+        <a href="home.html" class="nav-item scan-button">
+            <i class="ph ph-qr-code"></i>
+            <span>Scan</span>
+        </a>
+        <a href="notification.html" class="nav-item">
+            <i class="ph ph-bell"></i>
+            <span>Notification</span>
+        </a>
+        <a href="profile.html" class="nav-item">
+            <i class="ph ph-user"></i>
+            <span>Account</span>
+        </a>
+    </nav>
+
+    <!-- Scripts -->
+    <script type="module" src="js/ui.js"></script>
+    <script type="module" src="js/auth.js"></script>
+    <script type="module" src="js/firestore.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
