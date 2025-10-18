@@ -3,13 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ParkHere - Home</title>
+    <title>ParkHere - Smart Parking Solutions</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <link href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
-<body>
-    <h1>Welcome to ParkHere</h1>
+<body class="landing-body">
+    <!-- Main Container -->
+    <main class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-8 col-lg-6">
+                <!-- Main Illustration -->
+                <div class="landing-illustration text-center mb-5">
+                    <img src="assets/images/landing-illustration.png" alt="ParkHere App Preview" class="img-fluid landing-image">
+                </div>
+
+                <!-- Headline Text -->
+                <div class="landing-content text-center">
+                    <h1 class="landing-title">Discover ParkHere's Exceptional Services</h1>
+                    
+                    <!-- Sub-headline Text -->
+                    <p class="landing-subtitle">Join ParkHere to explore our superior services and enjoy hassle-free parking solutions</p>
+                    
+                    <!-- Action Buttons Group -->
+                    <div class="landing-actions mt-5">
+                        <div class="row g-3">
+                            <div class="col-12 col-sm-6">
+                                <a href="login.html" class="btn btn-landing-primary w-100">
+                                    <i class="ph ph-sign-in me-2"></i>
+                                    Login
+                                </a>
+                            </div>
+                            <div class="col-12 col-sm-6">
+                                <a href="register.html" class="btn btn-landing-secondary w-100">
+                                    <i class="ph ph-user-plus me-2"></i>
+                                    Sign Up
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/main.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
