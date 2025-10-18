@@ -19,7 +19,7 @@ const GOOGLE_MAPS_API_KEY = 'AIzaSyDLaI2cD-47gGjqsSdQElgIh197SdAnaLQ';
 document.addEventListener('DOMContentLoaded', () => {
     console.log('ParkHere app initialized');
     
-    // Initialize Firebase Auth
+    // Initialize Firebase Auth for all pages (landing page doesn't load this script)
     initializeAuth();
     
     // Password visibility toggle for login form
@@ -107,16 +107,23 @@ async function initializeAuth() {
         // Get the current authenticated user
         const user = await getCurrentUser();
         
-        if (user) {
+        const isAuthPage = window.location.pathname.includes('login.html') || window.location.pathname.includes('register.html');
+
+        if (user) { // User is logged in
             currentUser = user;
             console.log('User signed in:', user.uid);
-        } else {
+            
+            if (isAuthPage) {
+                console.log('Logged-in user on auth page, redirecting to home');
+                window.location.href = 'home.html';
+                return;
+            }
+        } else { // User is not logged in
             currentUser = null;
             console.log('No user signed in');
             
-            // Redirect to login if not on login/register pages
-            const currentPage = getCurrentPage();
-            if (currentPage !== 'login' && currentPage !== 'register' && currentPage !== 'index') {
+            if (!isAuthPage) {
+                console.log('Unauthenticated user on protected page, redirecting to login');
                 window.location.href = 'login.html';
                 return;
             }
