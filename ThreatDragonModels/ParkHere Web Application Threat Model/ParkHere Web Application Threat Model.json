@@ -1,0 +1,29 @@
+{
+  "version": "2.6.2",
+  "release_version": "1.0",
+  "released_at": "2026-09-05",
+  "summary": {
+    "title": "ParkHere Web Application Threat Model",
+    "owner": "Aydie Rahma",
+    "description": "ParkHere adalah aplikasi web berbasis Progressive Web App (PWA) untuk membantu pengguna mencari lokasi parkir, mengelola kendaraan, memulai dan mengakhiri sesi parkir, melakukan simulasi pembayaran, serta melihat riwayat parkir dan notifikasi. ParkHere menggunakan Firebase Authentication untuk autentikasi pengguna, Cloud Firestore untuk penyimpanan data, dan Google Maps API untuk layanan lokasi dan peta.",
+    "id": 0
+  },
+  "detail": {
+    "contributors": [],
+    "diagrams": [
+      {
+        "id": 0,
+        "title": "ParkHere Main System",
+        "diagramType": "STRIDE",
+        "placeholder": "Deskripsi diagram STRIDE baru",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.6.2",
+        "cells": [],
+        "description": "Main data flow and security boundaries of the ParkHere web application."
+      }
+    ],
+    "diagramTop": 2,
+    "reviewer": "",
+    "threatTop": 0
+  }
+}
