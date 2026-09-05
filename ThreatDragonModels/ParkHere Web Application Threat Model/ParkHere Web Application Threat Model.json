@@ -200,7 +200,25 @@
               "reasonOutOfScope": "",
               "hasOpenThreats": false,
               "providesAuthentication": false,
-              "threats": []
+              "threats": [
+                {
+                  "id": "d776f259-05ff-43c5-870c-0e0ec203b78a",
+                  "title": "Unauthorized User Login",
+                  "status": "Mitigated",
+                  "severity": "High",
+                  "type": "Spoofing",
+                  "description": "An attacker may attempt to impersonate a legitimate ParkHere user by using stolen or invalid account credentials.",
+                  "mitigation": "ParkHere uses Firebase Authentication to verify user credentials before granting access to authenticated application features.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 1,
+                  "score": ""
+                }
+              ],
+              "threatFrequency": {
+                "spoofing": 1,
+                "repudiation": 0
+              }
             }
           },
           {
@@ -217,8 +235,8 @@
                 "text": "ParkHere Web \nApplication"
               },
               "body": {
-                "stroke": "#333333",
-                "strokeWidth": 1.5,
+                "stroke": "red",
+                "strokeWidth": 2.5,
                 "strokeDasharray": null
               }
             },
@@ -315,12 +333,67 @@
               "outOfScope": false,
               "isTrustBoundary": false,
               "reasonOutOfScope": "",
-              "hasOpenThreats": false,
+              "hasOpenThreats": true,
               "handlesCardPayment": false,
               "handlesGoodsOrServices": false,
               "isWebApplication": false,
               "privilegeLevel": "",
-              "threats": []
+              "threats": [
+                {
+                  "id": "d5b5d075-c609-46ce-b8f0-668f7e26f92a",
+                  "title": "Parking or Payment Data Manipulation",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "A malicious user may manipulate parking duration, payment amount, or other parking data processed on the client side before the data is stored.",
+                  "mitigation": "Validate and calculate sensitive parking and payment data on a trusted backend instead of relying only on client-side values.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 2,
+                  "score": ""
+                },
+                {
+                  "id": "e095f574-4f3e-44b0-94ca-27bdaa6e1230",
+                  "title": "Parking Transaction Cannot Be Fully Audited",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Repudiation",
+                  "description": "A user may deny performing a parking or payment action if the system does not maintain a reliable audit trail of important activities.",
+                  "mitigation": "Maintain server-generated audit logs for important actions such as starting parking, ending parking, and payment activities.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 5,
+                  "score": ""
+                },
+                {
+                  "id": "469ec180-6f60-4489-adaa-8319cc535ea0",
+                  "title": "Unauthorized Privileged Data Modification",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Elevation of privilege",
+                  "description": "A regular authenticated user may gain permissions beyond the intended access level and modify protected parking or application data.",
+                  "mitigation": "Enforce authorization checks and Firestore Security Rules so users can only perform actions and modify data permitted for their account.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 8,
+                  "score": ""
+                }
+              ],
+              "threatFrequency": {
+                "spoofing": 0,
+                "tampering": 1,
+                "repudiation": 1,
+                "informationDisclosure": 0,
+                "denialOfService": 0,
+                "elevationOfPrivilege": 1
+              }
+            },
+            "tools": {
+              "items": [
+                "boundary",
+                "button-remove"
+              ],
+              "name": null
             }
           },
           {
@@ -457,11 +530,13 @@
                 "text": "Cloud Firestore"
               },
               "topLine": {
-                "strokeWidth": 1.5,
+                "stroke": "red",
+                "strokeWidth": 2.5,
                 "strokeDasharray": null
               },
               "bottomLine": {
-                "strokeWidth": 1.5,
+                "stroke": "red",
+                "strokeWidth": 2.5,
                 "strokeDasharray": null
               }
             },
@@ -558,13 +633,59 @@
               "outOfScope": false,
               "isTrustBoundary": false,
               "reasonOutOfScope": "",
-              "hasOpenThreats": false,
+              "hasOpenThreats": true,
               "isALog": false,
               "isEncrypted": false,
               "isSigned": false,
               "storesCredentials": false,
               "storesInventory": false,
-              "threats": []
+              "threats": [
+                {
+                  "id": "9d6f74c6-e712-4196-a90c-a4e7f97e4823",
+                  "title": "Unauthorized Access to User Data",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Information disclosure",
+                  "description": "An unauthorized user may gain access to vehicle, parking history, active parking, or notification data belonging to another user.",
+                  "mitigation": "Implement strict Firestore Security Rules so authenticated users can only access data associated with their own user ID.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 3,
+                  "score": ""
+                },
+                {
+                  "id": "6ee67b69-763c-4d63-a304-c7a6c2e4cb59",
+                  "title": "Unauthorized Modification of Parking Data",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "An attacker may attempt to modify vehicle information, active parking data, parking history, or available parking slot values without proper authorization.",
+                  "mitigation": "Enforce strict Firestore Security Rules and validate write operations so users can only modify data they are authorized to access.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 4,
+                  "score": ""
+                },
+                {
+                  "id": "6f21c529-567e-4ac6-b69e-2bda22e99803",
+                  "title": "Excessive Database Requests",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Denial of service",
+                  "description": "An attacker may generate excessive Firestore read or write requests, which could affect application availability or consume service quotas.",
+                  "mitigation": "Apply access controls, request validation, Firebase App Check, monitoring, and appropriate usage limits to reduce excessive or unauthorized requests.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 7,
+                  "score": ""
+                }
+              ],
+              "threatFrequency": {
+                "tampering": 1,
+                "repudiation": 0,
+                "informationDisclosure": 1,
+                "denialOfService": 1
+              }
             }
           },
           {
@@ -684,7 +805,29 @@
               "handlesGoodsOrServices": false,
               "isWebApplication": false,
               "privilegeLevel": "",
-              "threats": []
+              "threats": [
+                {
+                  "id": "7f98d933-d35e-4a39-886a-f150e8cd9179",
+                  "title": "User Location Information Exposure",
+                  "status": "Mitigated",
+                  "severity": "Medium",
+                  "type": "Information disclosure",
+                  "description": "User location coordinates are processed to display maps and retrieve location information, which may expose sensitive location data if transmitted insecurely.",
+                  "mitigation": "Request location access through browser permission and transmit location data only over encrypted HTTPS connections.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 6,
+                  "score": ""
+                }
+              ],
+              "threatFrequency": {
+                "spoofing": 0,
+                "tampering": 0,
+                "repudiation": 0,
+                "informationDisclosure": 1,
+                "denialOfService": 0,
+                "elevationOfPrivilege": 0
+              }
             }
           },
           {
@@ -912,6 +1055,6 @@
     ],
     "diagramTop": 2,
     "reviewer": "",
-    "threatTop": 0
+    "threatTop": 8
   }
 }
